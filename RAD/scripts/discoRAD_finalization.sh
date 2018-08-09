@@ -3,14 +3,7 @@
 # REQUIRES:
 ## Python 3
 ## short_read_connector: installed and compiled: https://github.com/GATB/short_read_connector
-## quick_hierarchical_clustering compiled:
-### c++ -std=gnu++11 quick_hierarchical_clustering.cpp -o quick_hierarchical_clustering     # WITH LINUX
-### clang++ -std=gnu++11 quick_hierarchical_clustering.cpp -o quick_hierarchical_clustering # WITH MACOS
-
-# echo "WARNING1: short_read_connector must have been compiled"
-# echo "WARNING2: quick_hierarchical_clustering.cpp must have been compiled :"
-# echo "  c++ -std=gnu++11 quick_hierarchical_clustering.cpp -o quick_hierarchical_clustering     # WITH LINUX"
-# echo "  clang++ -std=gnu++11 quick_hierarchical_clustering.cpp -o quick_hierarchical_clustering # WITH MACOS"
+# echo "WARNING: short_read_connector must have been compiled"
 
 
 function help {
@@ -20,7 +13,7 @@ echo "====================================================="
 echo "run discoRAD.sh, this script manages bubble clustering from a discofile.fa file, and the integration of cluster informations in a disco.vcf file"
 echo " 1/ Remove variants with more than 95% genotypes"
 echo " 2/ Clustering variants"
-echo " 3/ Removing heterozygous clusters (paralogs filter)"
+echo " 3/ Removing variant in too large clusters"
 echo " 4/ Removing low ranked variants (those whose rank is < 0.2 \n"
 echo "Usage: ./discoRAD.sh -f discofile -s SRC_directory/"
 echo "nb: all options are MANDATORY\n"
@@ -36,7 +29,7 @@ echo "Filtration of $rawdiscofile"
 echo "====================================================="
 echo " 1/ Remove variants with more than ${percent_missing} genotypes"
 echo " 2/ Clustering variants (sharing at least a ${usedk}-mers)"
-echo " 3/ Removing clusters with more than 100*${max_hetero}% heterozygous variants in more than 100*${max_indivs}% individuals"
+echo " 3/ Removing variant in clusters with a size above ${max_cluster_size}"
 echo " 4/ Removing low ranked variants (those whose rank is < ${min_rank}"
 echo " Resulting file is ${rawdiscofile_base}_sorted_with_clusters.vcf"
 }
@@ -67,7 +60,7 @@ done
 # Detect the directory path
 
 EDIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
-
+BINDIR=$EDIR"/../../build/bin"
 rawdiscofile_base=$( basename  "${rawdiscofile}" .fa)
 
 #################### PARAMETERS VALUES #######################
@@ -79,9 +72,8 @@ usedk=$((originalk-1))
 # rank filter parameter
 min_rank=0.2
 
-# paralogous filter parameters
-max_hetero=0.1
-max_indivs=0.5
+# cluster size parameter
+max_cluster_size=300
 
 percent_missing=0.95
 
@@ -115,7 +107,8 @@ ls ${discofile}.fa > ${discofile}.fof
 
 # Compute sequence similarities
 cmdSRC="${short_read_connector_directory}/short_read_connector.sh -b ${discofile}.fa -q ${discofile}.fof -s 0 -k ${usedk} -a 1 -l -p ${discofile}"
-$cmdSRC
+echo $cmdSRC
+eval $cmdSRC
 
 if [ $? -ne 0 ]
 then
@@ -123,12 +116,31 @@ then
     exit 1
 fi
 
+# Format one line per edge
+cmd="python3 ${EDIR}/from_SRC_to_edges.py ${discofile}.txt"
+echo $cmd "> ${discofile}_edges.txt"
+eval $cmd "> ${discofile}_edges.txt"
+
+
 # Compute the clustering
-${EDIR}/quick_hierarchical_clustering ${discofile}.txt > ${discofile}.cluster
+cmdqhc="${BINDIR}/quick_hierarchical_clustering ${discofile}_edges.txt"
+echo $cmdqhc " > ${discofile}.cluster"
+eval $cmdqhc "> ${discofile}.cluster"
 
+if [ $? -ne 0 ]
+then
+    echo "there was a problem with quick_hierarchical_clustering, exit"
+    exit 1
+fi
 # Generate a .fa file with clustering information
-python3 ${EDIR}/clusters_and_fasta_to_fasta.py ${original_disco}.fa ${discofile}.cluster > ${original_disco}_with_clusters.fa
-
+cmd="python3 ${EDIR}/clusters_and_fasta_to_fasta.py ${original_disco}.fa ${discofile}.cluster"
+echo $cmd " > ${original_disco}_with_clusters.fa"
+eval $cmd "> ${original_disco}_with_clusters.fa"
+if [ $? -ne 0 ]
+then
+    echo "there was a problem when generating a .fa file with clustering information, exit"
+    exit 1
+fi
 
 ######################### VCF generation with cluster information ###########################
 
@@ -136,8 +148,9 @@ echo "############################################################"
 echo "###################### OUTPUT VCF ##########################"
 echo "############################################################"
 
-cmdVCF="${EDIR}/../scripts/run_VCF_creator.sh -p  ${original_disco}_with_clusters.fa -o ${original_disco}_with_clusters.vcf"
-$cmdVCF
+cmdVCF="${EDIR}/../../scripts/run_VCF_creator.sh -p  ${original_disco}_with_clusters.fa -o ${original_disco}_with_clusters.vcf"
+echo $cmdVCF
+eval $cmdVCF
 
 if [ $? -ne 0 ]
 then
@@ -145,25 +158,27 @@ then
     exit 1
 fi
 
-######################### Filter suspicious paralogous clusters ###########################
+######################### Filter large clusters ###########################
 
-echo "###########################################################"
-echo "################### FILTER PARALOGS ########################"
+echo "############################################################"
+echo "################### FILTER CLUSTERS ########################"
 echo "############################################################"
 
-cmdpara="python3 ${EDIR}/filter_paralogs.py ${original_disco}_with_clusters.vcf ${max_hetero} ${max_indivs}"
-$cmdpara
+cmdclustsize="${EDIR}/filter_by_cluster_size.sh ${original_disco}_with_clusters.vcf ${max_cluster_size}"
+echo $cmdclustsize
+eval $cmdclustsize
 
 if [ $? -ne 0 ]
 then
-    echo "there was a problem with paralogs fitlering"
+    echo "there was a problem with cluster size fitlering"
     exit 1
 fi
 
 # Remove low ranked variants
 
-cmdrk="python3 ${EDIR}/filter_rank_vcf.py para_${max_hetero}_${max_indivs}_${original_disco}_with_clusters.vcf ${min_rank}"
-$cmdrk
+cmdrk="python3 ${EDIR}/filter_rank_vcf.py clustersup${max_cluster_size}_${original_disco}_with_clusters.vcf ${min_rank}"
+echo $cmdrk
+eval $cmdrk
 
 if [ $? -ne 0 ]
 then
@@ -171,20 +186,38 @@ then
     exit 1
 fi
 
+echo "#######################################################################"
+echo "################### SORTS, FORMATS, AND CLEANS ########################"
+echo "#######################################################################"
+
 # Sort the .vcf file
-grep ^# ${min_rank}rk_para_${max_hetero}_${max_indivs}_${original_disco}_with_clusters.vcf > ${original_disco}_with_sorted_clusters.vcf; grep -v ^# ${original_disco}_with_clusters.vcf | sort >> ${original_disco}_with_sorted_clusters.vcf;
+cmd="grep ^# ${min_rank}rk_clustersup${max_cluster_size}_${original_disco}_with_clusters.vcf "
+echo $cmd "> ${original_disco}_with_sorted_clusters.vcf; "
+eval $cmd "> ${original_disco}_with_sorted_clusters.vcf; "
+
+cmd="grep -v ^# ${min_rank}rk_clustersup${max_cluster_size}_${original_disco}_with_clusters.vcf | sort"
+echo $cmd ">> ${original_disco}_with_sorted_clusters.vcf;"
+eval $cmd ">> ${original_disco}_with_sorted_clusters.vcf;"
 
 # Format chromosome Names in the VCF
-python3 ${EDIR}/format_VCF_with_cluster_ids.py ${original_disco}_with_sorted_clusters.vcf > ${original_disco}_with_sorted_formatted_clusters.vcf
+cmd="python3 ${EDIR}/format_VCF_with_cluster_ids.py ${original_disco}_with_sorted_clusters.vcf"
+echo $cmd "> ${original_disco}_with_sorted_formatted_clusters.vcf"
+eval $cmd "> ${original_disco}_with_sorted_formatted_clusters.vcf"
+
 
 # Clean results
-mv ${original_disco}_with_sorted_formatted_clusters.vcf ${rawdiscofile_base}_sorted_with_clusters.vcf
+cmd="mv ${original_disco}_with_sorted_formatted_clusters.vcf ${rawdiscofile_base}_sorted_with_clusters.vcf"
+echo $cmd
+eval $cmd
 
-rm -f *ERASEME*
+cmd="rm -f *ERASEME*"
+echo $cmd
+eval $cmd
+
 sumup > log_${rawdiscofile_base}_sorted_with_clusters.txt
 
 echo "============================"
-echo " DISCORAD FINALIZATION DONE"
+echo " DISCORAD FINALIZATION DONE "
 echo "============================"
 echo " Results in ${rawdiscofile_base}_sorted_with_clusters.vcf"
 echo " Logs in log_${rawdiscofile_base}_sorted_with_clusters.txt"

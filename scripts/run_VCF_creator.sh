@@ -198,10 +198,11 @@ if [ -z "$samfile" ];then
        fi
        #Ghost mode
        if [ -z "$genome" ]; then
-              if [[ "$discoSNPs" =~ sam ]]; then
-                     echo "!!! Disco file can't be a sam file !!!"
-                     exit 1
-              fi
+              # if [[ "$discoSNPs" =~ sam ]]; then
+              #     echo "$discoSNPs"
+              #        echo "!!! Disco file can't be a sam file !!!"
+              #        exit 1
+              # fi
               echo -e "...Ghost mode..."
               echo -e "...Creation of a vcf without alignment..."
               if [ -z "$discoSNPs" ] && [ -z "$vcffile" ];then
@@ -297,8 +298,8 @@ if [ -z "$samfile" ];then
        #---------------------------------------------------------------------------------------------------------------------------
        #---------------------------------------------------------------------------------------------------------------------------
        ##Alignment discosnps on the reference genome
-       echo "ALIGNMENT: $PATH_BWA/bwa mem $genome $discoSNPsbis > $samfile"
-       $PATH_BWA/bwa mem $genome $discoSNPsbis > $samfile
+       echo "ALIGNMENT: $PATH_BWA/bwa mem -h 80 $genome $discoSNPsbis > $samfile"
+       $PATH_BWA/bwa mem -h 80 $genome $discoSNPsbis > $samfile
        if [ $? -ne 0 ]
        then
               echo "there was a problem with BWA (command was \"$PATH_BWA/bwa mem $genome $discoSNPsbis > $samfile\""

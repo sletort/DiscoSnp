@@ -52,8 +52,8 @@ b=2 # all bubbles accepted"
 c=auto # minimal coverage
 C=$max_C # maximal coverage
 M=4
-d=1 # estimated number of error per read (used by kissreads only)
-D=10 # maximal size of searched deletions
+d=10 # estimated number of error per read (used by kissreads only)
+D=3 # maximal size of searched deletions
 max_ambigous_indel=20
 P=5 # number of polymorphsim per bubble
 option_max_symmetrical_crossroads="0"
@@ -69,26 +69,27 @@ short_read_connector_path=""
 #EDIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 EDIR=$( python -c "import os.path; print(os.path.dirname(os.path.realpath(\"${BASH_SOURCE[0]}\")))" ) # as suggested by Philippe Bordron 
 
-if [ -d "$EDIR/build/" ] ; then # VERSION SOURCE COMPILED
-    read_file_names_bin=$EDIR/build/bin/read_file_names
-    dbgh5_bin=$EDIR/build/ext/gatb-core/bin/dbgh5
-    kissnp2_bin=$EDIR/build/bin/kissnp2
-    kissreads2_bin=$EDIR/build/bin/kissreads2
+if [ -d "$EDIR/../build/" ] ; then # VERSION SOURCE COMPILED
+    read_file_names_bin=$EDIR/../build/bin/read_file_names
+    dbgh5_bin=$EDIR/../build/ext/gatb-core/bin/dbgh5
+    kissnp2_bin=$EDIR/../build/bin/kissnp2
+    kissreads2_bin=$EDIR/../build/bin/kissreads2
 else # VERSION BINARY
-    read_file_names_bin=$EDIR/bin/read_file_names
-    dbgh5_bin=$EDIR/bin/dbgh5
-    kissnp2_bin=$EDIR/bin/kissnp2
-    kissreads2_bin=$EDIR/bin/kissreads2
+    read_file_names_bin=$EDIR/../bin/read_file_names
+    dbgh5_bin=$EDIR/../bin/dbgh5
+    kissnp2_bin=$EDIR/../bin/kissnp2
+    kissreads2_bin=$EDIR/../bin/kissreads2
 fi
 
 
-chmod u+x $EDIR/scripts/*.sh $EDIR/scripts_RAD/*.sh $EDIR/run_discoSnpRad.sh 2>/dev/null # Usefull for binary distributions
+chmod u+x $EDIR/../scripts/*.sh $EDIR/scripts/*.sh $EDIR/run_discoSnpRad.sh 2>/dev/null # Usefull for binary distributions
 
 useref=""
 wraith="false"
 bwa_path_option=""
 bwa_distance=4
 max_truncated_path_length_difference=0
+option_phase_variants=""
 #######################################################################
 #################### END HEADER                 #######################
 #######################################################################
@@ -110,7 +111,7 @@ function help {
     echo -e "\t\t -g: reuse a previously created graph (.h5 file) with same prefix and same k and c parameters."
 #    echo -e "\t\t -m value. Maximal number of symmetrical crossroadsds traversed in one bubble. (-m 0 is equivalent to -b 2 option - -1 is equivalent to unlimited). [default '5']"
     echo -e "\t\t -R: high recall mode. With this parameter up to five symmetrical crossroads may be traversed during bubble detection."
-    echo -e "\t\t -D value. discoSnpRad will search for deletions of size from 1 to D included. Default=10"
+    echo -e "\t\t -D value. discoSnpRad will search for deletions of size from 1 to D included. Default=3 (for RAD)"
     echo -e "\t\t -a value. Maximal size of ambiguity of INDELs. INDELS whose ambiguity is higher than this value are not output  [default '20']"
     echo -e "\t\t -L value. Longest accepted difference length between two paths of a truncated bubble [default '0']"
     echo -e "\t\t -P value. discoSnpRad will search up to P SNPs in a unique bubble. Default=5"
@@ -119,7 +120,7 @@ function help {
     echo -e "\t\t -k value. Set the length of used kmers. Must fit the compiled value. Default=31"
     echo -e "\t\t -c value. Set the minimal coverage per read set: Used by kissnp2 (don't use kmers with lower coverage) and kissreads (read coherency threshold). This coverage can be automatically detected per read set or specified per read set, see the documentation. Default=auto"
     echo -e "\t\t -C value. Set the maximal coverage for each read set: Used by kissnp2 (don't use kmers with higher coverage). Default=2^31-1"
-    echo -e "\t\t -d value. Set the number of authorized substitutions used while mapping reads on found SNPs (kissreads). Default=1"
+    echo -e "\t\t -d value. Set the number of authorized substitutions used while mapping reads on found SNPs (kissreads). Default=10 (for RAD)"
     echo -e "\t\t -u: max number of used threads"
     
     
@@ -139,8 +140,14 @@ function help {
 #################### GET OPTIONS                #######################
 #######################################################################
 
-while getopts ":r:p:k:c:C:d:D:b:s:P:S:L:htTwlgu:a:v:" opt; do
+while getopts ":r:p:k:c:C:d:D:b:s:P:S:L:htTRwlgAu:a:v:" opt; do
     case $opt in
+        A) 
+        option_phase_variants="-phasing"
+        echo "Will phase variants during kissreads process - WARNING this option is too experimental and thus not described in the help message"
+        echo "You can obtain clusters using script : \"script/from_phased_alleles_to_clusters.sh file_name_of_phased_alleles\" (the filename(s) is/are given during kissreads process"
+        ;;
+    
     L)
         max_truncated_path_length_difference=$OPTARG
         ;;
@@ -187,6 +194,11 @@ while getopts ":r:p:k:c:C:d:D:b:s:P:S:L:htTwlgu:a:v:" opt; do
     m) # Take care, this option is no more in the help, but can by used for development purposes. This must be used without the -R option.
         echo "max_symmetrical_crossroads: $OPTARG" >&2
         option_max_symmetrical_crossroads=$OPTARG
+        ;;
+    
+    R) # Take care, this option is no more in the help, but can by used for development purposes. This must be used without the -R option.
+        echo "High recall mode: max_symmetrical_crossroads: $OPTARG" >&2
+        option_max_symmetrical_crossroads=5
         ;;
 
     p)
@@ -322,7 +334,11 @@ echo
 #################### DUMP READ FILES  #######################
 #############################################################
 ${read_file_names_bin} -in $read_sets > $readsFilesDump
-
+if [ $? -ne 0 ]
+then
+    echo "there was a problem with readFileName Dumping":
+    exit 1
+fi
 
 
 ############################################################
@@ -393,7 +409,7 @@ fi
 #######################################################################
 #################### REDUNDANCY REMOVAL         #######################
 #######################################################################
-redundancy_removal_cmd="python $EDIR/scripts/redundancy_removal_discosnp.py ${kissprefix}_r.fa $k $kissprefix.fa"
+redundancy_removal_cmd="python $EDIR/../scripts/redundancy_removal_discosnp.py ${kissprefix}_r.fa $k $kissprefix.fa"
 echo ${redundancy_removal_cmd}
 ${redundancy_removal_cmd}
 
@@ -414,11 +430,11 @@ fi
 i=5 #avoid modidy this (or increase this if memory needed by kissread is too high. Min 1. Large i (7-10) decreases memory and increases time).
 index_stride=$(($i+1)); size_seed=$(($smallk-$i)) # DON'T modify this.
 
-kissreadsCmd="${kissreads2_bin} -predictions $kissprefix.fa -reads  $read_sets -co ${kissprefix}_coherent -unco ${kissprefix}_uncoherent -k $k -size_seeds ${size_seed} -index_stride ${index_stride} -hamming $d  $genotyping -coverage_file ${h5prefix}_cov.h5 $option_cores_gatb  -verbose $verbose"
+kissreadsCmd="${kissreads2_bin} -predictions $kissprefix.fa -reads  $read_sets -co ${kissprefix}_coherent -unco ${kissprefix}_uncoherent -k $k -size_seeds ${size_seed} -index_stride ${index_stride} -hamming $d  $genotyping -coverage_file ${h5prefix}_cov.h5 $option_cores_gatb  -verbose $verbose ${option_phase_variants}"
 
 echo $kissreadsCmd
 if [[ "$wraith" == "false" ]]; then
-    $kissreadsCmd
+    eval $kissreadsCmd
 fi
 if [ $? -ne 0 ]
 then
@@ -476,16 +492,16 @@ echo -e "\t###############################################################"
 
 T="$(date +%s)"
 if [ -f "$src_file" ]; then
-    cmd="$EDIR/scripts_RAD/discoRAD_finalization.sh ${kissprefix}_coherent.fa $short_read_connector_path" 
+    cmd="$EDIR/scripts/discoRAD_finalization.sh -f ${kissprefix}_coherent.fa -s $short_read_connector_path" 
     echo $cmd
     if [[ "$wraith" == "false" ]]; then
-        $cmd
+        eval $cmd
     fi  
     T="$(($(date +%s)-T))"
     echo "RAD clustering per locus time in seconds: ${T}"
 else
     echo "IF YOU WANT TO CLUSTERIZE RESULTS, RUN: "
-    echo "  $EDIR/scripts_RAD/discoRAD_finalization.sh ${kissprefix}_coherent.fa short_read_connector_path"
+    echo "  $EDIR/scripts/discoRAD_finalization.sh -f ${kissprefix}_coherent.fa -s short_read_connector_path"
     echo "  With short_read_connector_path indicating the directory containing short_read_connector.sh command "
 fi
 

@@ -1,0 +1,1 @@
+../../scripts/clusters_and_fasta_to_fasta.py

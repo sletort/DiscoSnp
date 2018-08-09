@@ -36,16 +36,15 @@ read_sets="" # A file of file(s)
 prefix="discoRes" # all intermediate and final files will be written will start with this prefix
 k=31 # size of kmers
 b=0 # smart branching approach: bubbles in which both paths are equaly branching are  discarded, all others are accepted
-c=auto # minimal coverage
+c=3 # minimal coverage
 C=$max_C # maximal coverage
-M=4
 d=1 # estimated number of error per read (used by kissreads only)
 D=100 # maximal size of searched deletions
 max_ambigous_indel=20
-P=1 # number of polymorphsim per bubble
+P=3 # number of polymorphsim per bubble
 option_max_symmetrical_crossroads=""
 l="-l"
-extend=""
+extend="-t"
 x=""
 y=""
 output_coverage_option=""
@@ -77,6 +76,7 @@ useref=""
 wraith="false"
 genome=""
 bwa_path_option=""
+option_phase_variants=""
 bwa_distance=4
 
 #######################################################################
@@ -104,17 +104,15 @@ function help {
     echo -e "\t\t -s value. In b2 mode only: maximal number of symmetrical crossroads traversed while trying to close a bubble. Default: no limit"
     echo -e "\t\t -D value. discoSnp++ will search for deletions of size from 1 to D included. Default=100"
     echo -e "\t\t -a value. Maximal size of ambiguity of INDELs. INDELS whose ambiguity is higher than this value are not output  [default '20']"
-    echo -e "\t\t -P value. discoSnp++ will search up to P SNPs in a unique bubble. Default=1"
+    echo -e "\t\t -P value. discoSnp++ will search up to P SNPs in a unique bubble. Default=3"
     echo -e "\t\t -p prefix. All out files will start with this prefix. Default=\"discoRes\""
     echo -e "\t\t -l: remove low complexity bubbles"
     echo -e "\t\t -k value. Set the length of used kmers. Must fit the compiled value. Default=31"
-    echo -e "\t\t -t: extend found polymorphisms with unitigs"
-    echo -e "\t\t -T: extend found polymorphisms with contigs"
-    echo -e "\t\t -c value. Set the minimal coverage per read set: Used by kissnp2 (don't use kmers with lower coverage) and kissreads (read coherency threshold). This coverage can be automatically detected per read set or specified per read set, see the documentation. Default=auto"
+    echo -e "\t\t -T: extend found polymorphisms with contigs (default: extend with unitigs)"
+    echo -e "\t\t -c value. Set the minimal coverage per read set: Used by kissnp2 (don't use kmers with lower coverage) and kissreads (read coherency threshold). This coverage can be automatically detected per read set (in this case use \"auto\" or specified per read set, see the documentation. Default=3"
     echo -e "\t\t -C value. Set the maximal coverage for each read set: Used by kissnp2 (don't use kmers with higher coverage). Default=2^31-1"
     echo -e "\t\t -d value. Set the number of authorized substitutions used while mapping reads on found SNPs (kissreads). Default=1"
     echo -e "\t\t -n: do not compute the genotypes"
-    echo -e "\t\t -e: map SNP predictions on reference genome with their extensions."
     echo -e "\t\t -u: max number of used threads"
     echo -e "\t\t -v: verbose 0 (avoids progress output) or 1 (enables progress output) -- default=1."
 
@@ -124,7 +122,7 @@ function help {
     echo -e "\t\t -R: use the reference file also in the variant calling, not only for mapping results"
     echo -e "\t\t -B: bwa path. e.g. /home/me/my_programs/bwa-0.7.12/ (note that bwa must be pre-compiled)"
     echo -e "\t\t\t Optional unless option -G used and bwa is not in the binary path."
-    echo -e "\t\t -M: Maximal number of mapping errors during BWA mapping phase."
+    echo -e "\t\t -e: map SNP predictions on reference genome with their extensions."
     echo -e "\t\t\t Useless unless mapping on reference genome is required (option -G). Default=4. "
     echo 
     
@@ -137,8 +135,13 @@ function help {
 #######################################################################
 #################### GET OPTIONS                #######################
 #######################################################################
-while getopts ":r:p:k:c:C:d:D:b:s:P:htTlRmgnwXxyeG:B:M:u:a:v:" opt; do
+while getopts ":r:p:k:c:C:d:D:b:s:P:hATlRmgnwXxyeG:B:u:a:v:" opt; do
     case $opt in
+        A) 
+        option_phase_variants="-phasing"
+        echo "Will phase variants during kissreads process - WARNING this option is too experimental and thus not described in the help message"
+        echo "You can obtain clusters using script : \"script/from_phased_alleles_to_clusters.sh file_name_of_phased_alleles\" (the filename(s) is/are given during kissreads process"
+        ;;
     X)
         stop_after_kissnp=1
         ;;
@@ -163,9 +166,7 @@ while getopts ":r:p:k:c:C:d:D:b:s:P:htTlRmgnwXxyeG:B:M:u:a:v:" opt; do
         echo ${option_max_symmetrical_crossroads}
         ;;
 
-    t)
-        extend="-t"
-        ;;
+
 
     T)
         extend="-T"
@@ -253,10 +254,6 @@ while getopts ":r:p:k:c:C:d:D:b:s:P:htTlRmgnwXxyeG:B:M:u:a:v:" opt; do
         genome=$OPTARG
         ;;
 
-    M)
-        echo "use M=$OPTARG" >&2
-        M=$OPTARG
-        ;;
 
     e)
         e="-e"
@@ -452,7 +449,7 @@ fi
 i=5 #avoid modidy this (or increase this if memory needed by kissread is too high. Min 1. Large i (7-10) decreases memory and increases time).
 index_stride=$(($i+1)); size_seed=$(($smallk-$i)) # DON'T modify this.
 
-kissreadsCmd="${kissreads2_bin} -predictions $kissprefix.fa -reads  $read_sets -co ${kissprefix}_coherent -unco ${kissprefix}_uncoherent -k $k -size_seeds ${size_seed} -index_stride ${index_stride} -hamming $d  $genotyping -coverage_file ${h5prefix}_cov.h5 $option_cores_gatb  -verbose $verbose $y"
+kissreadsCmd="${kissreads2_bin} -predictions $kissprefix.fa -reads  $read_sets -co ${kissprefix}_coherent -unco ${kissprefix}_uncoherent -k $k -size_seeds ${size_seed} -index_stride ${index_stride} -hamming $d  $genotyping -coverage_file ${h5prefix}_cov.h5 $option_cores_gatb  -verbose $verbose $y ${option_phase_variants}"
 
 echo $kissreadsCmd
 if [[ "$wraith" == "false" ]]; then

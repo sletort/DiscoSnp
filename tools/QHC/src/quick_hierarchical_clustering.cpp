@@ -17,104 +17,85 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sstream>
-#include <mutex>
-#include <functional>
-#include <utility>
+#include <stack>          // std::stack
+//#include <mutex>
+//#include <functional>
+//#include <utility>
+//typedef	unsigned long long	u_int64_t;
 
-uint maxdepth(0);
 using namespace std;
-unordered_set<uint> visited; // AVOIDS TO PUT IT IN THE RECURSION STACK.
-unordered_map <uint, unordered_set<uint> > nodeToNeighbors; // AVOIDS TO PUT IT IN THE RECURSION STACK.
-void DFS(uint n, unordered_set<uint>& nodesInConnexComp){
-    if (not visited.count(n)){
-        visited.insert(n);
-        nodesInConnexComp.insert(n);
-            for (auto&& neigh : nodeToNeighbors[n]){
-                DFS(neigh, nodesInConnexComp);
-            }
-        
+unordered_set <string> visited; // AVOIDS TO PUT IT IN THE RECURSION STACK.
+unordered_map <string, unordered_set<string> > nodeToNeighbors; // AVOIDS TO PUT IT IN THE RECURSION STACK.
+
+
+// DEPRECATED. Recursion depth is to high and causes the computation fails. 
+void DFS(const string n ){
+    visited.insert(n);
+    cout<<" "<<n;
+    for (auto&& neigh : nodeToNeighbors[n]){
+        if (not visited.count(neigh)) DFS(neigh);
     }
 }
 
-vector<string> split(const string &s, char delim){
-    stringstream ss(s);
-    string item;
-    vector<string> elems;
-    while (getline(ss, item, delim)) {
-        elems.push_back(move(item)); 
+
+void nonrecursive_DFS(const string n){
+    stack<string> mystack;
+    mystack.push(n);
+    visited.insert(n);
+    while (not mystack.empty()){
+        auto m = mystack.top();
+        mystack.pop();
+        cout<<" "<<m;
+        for (auto&& neigh : nodeToNeighbors[m]){
+            if (visited.count(neigh)==0)
+                mystack.push(neigh);
+                visited.insert(neigh);
+        }
     }
-    return elems;
 }
 
-// awaits  input lines like this 14:12 85834 13 85835 14 12319 15 19508 154886 14536 19509 154887 80595 80603 
-void parsingSRC(ifstream & refFile){
+// awaits  input lines like this 12 85834
+void parsingPairsOfNodes(ifstream & refFile){
     string listNodes;
-    // header
-    vector<string> splitted1, splitted2, splitted3;
-    uint read, source;
     while (not refFile.eof()){
         getline(refFile, listNodes);
+        if (listNodes.size() == 0) break;
         if (listNodes[0]=='#') continue; // HEADER.
-        splitted1 = split(listNodes, ':');
-        if (splitted1.size() > 1){
-            splitted2 = split(splitted1[1], ' ');
-            unordered_set<uint> reads;
-            source = stoi(splitted1[0]);  // source read
-            if (not splitted2.empty()){
-                for (uint i(0); i < splitted2.size(); ++i){
-                    read = stoi(splitted2[i]);  // recruited read
-                    if (read != source){
-                        reads.insert(read);
-                        if (nodeToNeighbors.count(read)){
-                            nodeToNeighbors[read].insert(source);
-                        } else {
-                            nodeToNeighbors.insert({read, {source}});
-                        }
-                    }
-                }
-            }
-            if (nodeToNeighbors.count(source)){
-                for (auto&& n : reads){
-                    nodeToNeighbors[source].insert(n);
-                }
-            } else {
-                nodeToNeighbors.insert({source, reads});
-            }
-        }   
+        
+        string node1, node2;
+        bool firstnode=true;
+        for (char c : listNodes){
+            if (c=='\t' || c==' ') {firstnode=false;continue;}
+            if (firstnode)  node1+=c;
+            else            node2+=c;
+        }
+        if (nodeToNeighbors.count(node1))  nodeToNeighbors[node1].insert(node2);
+        else nodeToNeighbors.insert({node1, {node2}});
+        if (nodeToNeighbors.count(node2))  nodeToNeighbors[node2].insert(node1);
+        else nodeToNeighbors.insert({node2, {node1}});
     }
 }
+
 
 
 
 int main(int argc, char** argv){
 
     if (argc > 1){
-        bool approx(false);
-        //~ string outFileName("final_g_clusters.txt");
 		
         string fileName(argv[1]);
         ifstream refFile(fileName);
         // parse SRC's output, for each line we get a node and its neighbors and fill the map nodeToNeighbors
         cerr << "Parsing..." << endl;
-        parsingSRC(refFile);
+        parsingPairsOfNodes(refFile);
         cerr << "Compute CCs..." << endl;
-        uint nbConnexComp(0);
-        vector<unordered_set<uint> > nodesInConnexComp;
         for (auto node(nodeToNeighbors.begin()); node != nodeToNeighbors.end(); ++node){
-            if (not (visited.count(node->first))){
-                unordered_set<uint> s;
-                nodesInConnexComp.push_back(s);
-                DFS(node->first, nodesInConnexComp.back());
-                ++ nbConnexComp;
+            if (visited.count(node->first)==0){
+//                DFS(node->first);
+                nonrecursive_DFS(node->first);
+                cout << endl;
             }
         }
-        cerr<<"Print CCs"<<endl;
-        for (uint i(0); i < nodesInConnexComp.size(); ++i){
-            for (auto&& n : nodesInConnexComp[i]){
-                cout << n << " ";
-            }
-            cout << endl;
-        }
-        cerr << "Connected components: " << nbConnexComp << endl;
     }
+    return 0;
 }

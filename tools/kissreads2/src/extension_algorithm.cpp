@@ -29,8 +29,23 @@
 
 //#define DEBUG_MAPPING
 //#define DEBUG_QUALITY
-//#define PHASING
 #define min(a, b) ((a) < (b) ? (a) : (b))
+
+
+// Replaces SNP_higher_path_3780|P_1:30_A/G|high|nb_pol_1 by 3780h
+string parse_variant_id(string in){
+    string res="";
+    // push the values while they are in [0-9]
+    for (char c : in){
+        if (c>=int('0') && c<=int('9'))
+            res=res+c;
+        if (c=='|')
+            break;
+    }
+    
+    res=res+in[4]; // h or l.
+    return res;
+}
 
 
 //feed_coherent_positions(index.all_predictions, value->a , pwi, (int)strlen(read), quality, seed_position, read_set_id, gv);
@@ -348,8 +363,8 @@ struct Functor
                         if(is_read_mapped){ // tuple read prediction position is read coherent
                             __sync_fetch_and_add (number_of_mapped_reads, 1);
                             
-                            /// PHASING
-#ifdef PHASING
+//    #ifdef PHASING
+                            if(gv.phasing){
                             mapped_prediction_as_set.insert     (value->a);     // This prediction whould not be mapped again with the same read
                             // currently the phasing works better with SNPs, as boths paths of  an indel may be mapped by a same read
                             if (index.all_predictions[value->a]->nbOfSnps !=0){      // If this is not an indel (todo phase also indels)
@@ -386,9 +401,9 @@ struct Functor
                                     ///
                                 }
                             }
-                            
+                            }
                             ////// END PHASING
-#endif //PHASING
+//#endif //PHASING
                             
 #ifdef DEBUG_MAPPING
                             printf("SUCCESS %d %d \n", pwi, value->a);
@@ -431,7 +446,8 @@ struct Functor
         // clear (if one still have to check the reverse complement of the read) or free (else) the list of int for each prediction_id on which we tried to map the current read
         
         /////// PHASING
-        #ifdef PHASING
+//        #ifdef PHASING
+        if (gv.phasing){
         if ((pwi_and_mapped_predictions1.size() + pwi_and_mapped_predictions2.size())>1){                                            // If two or more variants mapped by the same read
             string phased_variant_ids ="";                                          // Create a string containing the (lexicographically) ordered set of variant ids.
             
@@ -440,14 +456,12 @@ struct Functor
                 // TODO: optimize this
                 //                const int pwi = it->first;
                 int64_t var_id =it->second;
-                string phased_variant_id = "";
+                string sign = "";
                 if (var_id<0){
-                    phased_variant_id ="-";
+                    sign ="-";
                     var_id=-var_id;
                 }
-                phased_variant_id +=to_string(int((var_id+2)/2));
-                if (((var_id)%2)==0)   phased_variant_id = phased_variant_id+"h";
-                else                   phased_variant_id = phased_variant_id+"l";
+                string phased_variant_id = sign+parse_variant_id(index.all_predictions[var_id]->sequence.getComment());
                 phased_variant_ids = phased_variant_ids+phased_variant_id+';';
             }
             phased_variant_ids += ' ';
@@ -457,14 +471,12 @@ struct Functor
                 // TODO: optimize this
                 //                const int pwi = it->first;
                 int64_t var_id =it->second;
-                string phased_variant_id = "";
+                string sign = "";
                 if (var_id<0){
-                    phased_variant_id ="-";
+                    sign ="-";
                     var_id=-var_id;
                 }
-                phased_variant_id +=to_string(int((var_id+2)/2));
-                if (((var_id)%2)==0)   phased_variant_id = phased_variant_id+"h";
-                else                   phased_variant_id = phased_variant_id+"l";
+                string phased_variant_id = sign+parse_variant_id(index.all_predictions[var_id]->sequence.getComment());
                 phased_variant_ids = phased_variant_ids+phased_variant_id+';';
             }
             
@@ -475,7 +487,8 @@ struct Functor
         
         pwi_and_mapped_predictions1.clear();
         pwi_and_mapped_predictions2.clear();
-#endif // Phasing
+        }
+//#endif // Phasing
         /////// END PHASING
         
         
@@ -501,30 +514,28 @@ struct Functor
         // clear (if one still have to check the reverse complement of the read) or free (else) the list of int for each prediction_id on which we tried to map the current read
         
         /////// PHASING
-        #ifdef PHASING
-        if (pwi_and_mapped_predictions.size()>1){                                            // If two or more variants mapped by the same read
+        if (gv.phasing){
+        if (pwi_and_mapped_predictions.size()>1){                                   // If two or more variants mapped by the same read
             string phased_variant_ids ="";                                          // Create a string containing the (lexicographically) ordered set of variant ids.
             
             for (map<int,int64_t>::iterator it=pwi_and_mapped_predictions.begin(); it!=pwi_and_mapped_predictions.end(); ++it){
-                //            for (set<pair<int,u_int64_t>> ::iterator it=pwi_and_mapped_predictions.begin(); it!=pwi_and_mapped_predictions.end(); ++it){
-                // TODO: optimize this
-                //                const int pwi = it->first;
                 int64_t var_id =it->second;
-                string phased_variant_id = "";
+                string sign = "";
                 if (var_id<0){
-                    phased_variant_id ="-";
+                    sign ="-";
                     var_id=-var_id;
                 }
-                phased_variant_id += to_string(int((var_id+2)/2));
+                string phased_variant_id = sign+parse_variant_id(index.all_predictions[var_id]->sequence.getComment());
                 
-                if (((var_id)%2)==0)   phased_variant_id = phased_variant_id+"h";
-                else                   phased_variant_id = phased_variant_id+"l";
                 //DEBUG
-//                cout<<phased_variant_id<<endl;
+//                cout<<"phased_variant_id        "<<phased_variant_id<<endl;
+//                cout<<"from sequence:           "<<index.all_predictions[var_id]->sequence.getComment()<<endl;
+//                cout<<"parsed from sequence:    "<<parse_variant_id(index.all_predictions[var_id]->sequence.getComment())<<endl;
 //                cout<<it->first<<" "<<it->second<<endl;
 //                    phased_variant_id+="_"+index.all_predictions[var_id]->upperCaseSequence; //DEBUG
                 //ENDDEBUG
                 phased_variant_ids = phased_variant_ids+phased_variant_id+';';
+                
             }
             // Associate this string to the number of times it is seen when mapping this read set
             if (phased_variants.find(phased_variant_ids) == phased_variants.end())  phased_variants[phased_variant_ids] = 1;
@@ -532,9 +543,9 @@ struct Functor
         }
         
         pwi_and_mapped_predictions.clear();
+        }
         /////// END PHASING
-#endif // phasing
-        
+
         
         free(read);
         free(quality);
@@ -576,7 +587,6 @@ u_int64_t ReadMapper::map_all_reads_from_a_file (
     //        cout<<"subank id "<<subbank->getId()<<endl;
     //    }
     
-    cout <<inputBank->getId()<<endl;
     const std::vector<IBank*>& subbanks = inputBank->getBanks();
     // Test if a bank is composed of two read files.
     if (inputBank->getCompositionNb()==2 && subbanks[0]->getCompositionNb()==1 && subbanks[1]->getCompositionNb()==1){ // PAIRED END
@@ -596,18 +606,21 @@ u_int64_t ReadMapper::map_all_reads_from_a_file (
     }
     
     // PHASING:
-    #ifdef PHASING
+    if (gv.phasing){
+    stringstream phasingFileName;
+    phasingFileName<<"phased_alleles_read_set_id_"<<(read_set_id+1)<<".txt";
+    cout<<"print in phasing information in "<<phasingFileName.str()<<endl;
+    ofstream phasingFile (phasingFileName.str());
+    phasingFile <<"#"<<inputBank->getId()<<endl;
     for (map<string,int>::iterator it=phased_variants.begin(); it!=phased_variants.end(); ++it)
-        std::cout << it->first << " => " << it->second << '\n';
-#endif // PHASING
+        phasingFile << it->first << " => " << it->second << '\n';
+    phasingFile.close();
+    }
     // ENDPHASING
     
     
     return number_of_mapped_reads;
 }
-
-
-
 
 
 void ReadMapper::set_read_coherency(GlobalValues& gv, FragmentIndex index){
