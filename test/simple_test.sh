@@ -1,6 +1,6 @@
 #!/bin/bash
 
-../run_discoSnp++.sh -r fof.txt -T
+../run_discoSnp++.sh -r fof.txt -T -G reference_genome.fa
 
 diff discoRes_k_31_c_auto_D_100_P_1_b_0_coherent.fa ref_discoRes_k_31_c_auto_D_100_P_1_b_0_coherent.fa
 if [ $? -ne 0 ] ; then
