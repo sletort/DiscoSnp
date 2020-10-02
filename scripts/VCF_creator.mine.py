@@ -1,9 +1,10 @@
-#!/bin/python
+#! /bin/env python
 # -*- coding: utf-8 -*-
 #*****************************************************************************
 #   VCF_Creator: mapping and VCF creation feature in DiscoSnp++
 #   Copyright (C) 2015  INRIA
 #   Author: C.Riou
+#   Contributor: KooK
 #
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU Affero General Public License as
@@ -18,23 +19,23 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #*****************************************************************************
-import os
-import sys
-import subprocess
-import re
-import time
-import getopt
-from functionObjectVCF_creator import *
-from ClassVCF_creator import *
+# ~ import os
+# ~ import sys
+# ~ import subprocess
+# ~ import re
+# ~ import time
+# ~ import getopt
+# ~ from functionObjectVCF_creator import *
+# ~ from ClassVCF_creator import *
 
 
 
-#Default value
-listName=[] #List from the file name used to create the VCF
-nbSnp=0 #number of SNP in the input file
-nbGeno=0 #number of genotype for every path
-filtered_sam=False
-filtered_sam_file=""
+# ~ #Default value
+# ~ listName=[] #List from the file name used to create the VCF
+# ~ nbSnp=0 #number of SNP in the input file
+# ~ nbGeno=0 #number of genotype for every path
+# ~ filtered_sam=False
+# ~ filtered_sam_file=""
 #Help
 def usage():
     usage= """
